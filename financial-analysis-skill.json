@@ -1,0 +1,44 @@
+{
+  "name": "financial-report-analyzer",
+  "display_name": "财务报表分析助手",
+  "version": "1.0.0",
+  "description": "专业的上市公司财务报表分析工具，支持季报、半年报和年报的智能解析与投资分析",
+  "author": "Investment Research Team",
+  "tags": ["finance", "investment", "analysis", "reporting", "股票分析"],
+  "capabilities": [
+    "PDF财报智能解析",
+    "关键财务指标自动提取",
+    "盈利能力分析",
+    "偿债能力分析",
+    "运营能力分析",
+    "成长性分析",
+    "估值分析",
+    "同业对比分析",
+    "趋势预测与投资建议"
+  ],
+  "dependencies": {
+    "python": ">=3.9",
+    "required_packages": [
+      "PyPDF2>=3.0.0",
+      "pdfplumber>=0.10.0",
+      "pandas>=2.0.0",
+      "numpy>=1.24.0",
+      "anthropic>=0.18.0",
+      "matplotlib>=3.7.0",
+      "seaborn>=0.12.0",
+      "openpyxl>=3.1.0"
+    ]
+  },
+  "configuration": {
+    "supported_report_types": ["季报", "半年报", "年报"],
+    "supported_formats": ["PDF"],
+    "analysis_dimensions": [
+      "profitability",
+      "solvency",
+      "operational_efficiency",
+      "growth",
+      "valuation",
+      "cash_flow"
+    ]
+  }
+}

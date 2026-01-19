@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tree:*)",
+      "Skill(financial-analysis)",
+      "Bash(python3:*)"
+    ]
+  }
+}

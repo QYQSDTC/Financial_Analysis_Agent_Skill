@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+"""
+财务分析快捷命令
+用法: analyze-report <pdf_path> [--price <股价>]
+"""
+
+import sys
+import argparse
+from pathlib import Path
+
+# 添加模块路径
+sys.path.insert(0, str(Path(__file__).parent))
+
+from financial_analyzer import (
+    FinancialReportParser,
+    FinancialIndicatorCalculator,
+    FinancialAnalyzer,
+    AnalysisReportGenerator
+)
+
+
+def main():
+    parser = argparse.ArgumentParser(description='财务报表智能分析工具')
+    parser.add_argument('pdf_path', help='PDF财报文件路径')
+    parser.add_argument('--price', type=float, help='当前股价（可选）')
+    parser.add_argument('--investor-type', choices=['激进型', '稳健型', '保守型'],
+                        default='稳健型', help='投资者类型')
+    parser.add_argument('--output-dir', default='.', help='报告输出目录')
+
+    args = parser.parse_args()
+
+    print("🔍 开始分析财务报表...")
+
+    # 1. 解析PDF
+    print("\n[1/5] 解析PDF财报")
+    parser_obj = FinancialReportParser()
+    statement = parser_obj.parse_pdf(args.pdf_path)
+
+    # 2. 计算指标
+    print("[2/5] 计算财务指标")
+    calculator = FinancialIndicatorCalculator()
+    indicators = calculator.calculate_all_indicators(
+        balance_sheet=statement.balance_sheet,
+        income_statement=statement.income_statement,
+        cashflow_statement=statement.cashflow_statement,
+        metadata=statement.metadata
+    )
+    summary = calculator.get_summary()
+
+    # 3. 专业分析
+    print("[3/5] 进行专业分析")
+    analyzer = FinancialAnalyzer()
+    analysis = analyzer.analyze_financial_health(
+        company_name=statement.company_name,
+        indicators=indicators,
+        report_type=statement.report_type,
+        report_period=statement.report_period
+    )
+
+    # 4. 投资建议
+    print("[4/5] 生成投资建议")
+    recommendation = analyzer.generate_investment_recommendation(
+        analysis=analysis,
+        indicators=indicators,
+        stock_price=args.price,
+        target_investor_type=args.investor_type
+    )
+
+    # 5. 生成报告
+    print("[5/5] 生成分析报告")
+    report_gen = AnalysisReportGenerator()
+
+    md_path = f"{args.output_dir}/{statement.company_name}_{statement.report_period}_分析报告.md"
+    excel_path = f"{args.output_dir}/{statement.company_name}_{statement.report_period}_数据.xlsx"
+
+    report_gen.generate_markdown_report(
+        company_name=statement.company_name,
+        report_period=statement.report_period,
+        report_type=statement.report_type,
+        statement_data={
+            'balance_sheet': statement.balance_sheet,
+            'income_statement': statement.income_statement,
+            'cashflow_statement': statement.cashflow_statement,
+        },
+        indicators=indicators,
+        analysis=analysis,
+        recommendation=recommendation,
+        output_path=md_path
+    )
+
+    report_gen.generate_excel_report(
+        company_name=statement.company_name,
+        report_period=statement.report_period,
+        statement_data={
+            'balance_sheet': statement.balance_sheet,
+            'income_statement': statement.income_statement,
+            'cashflow_statement': statement.cashflow_statement,
+        },
+        indicators=indicators,
+        output_path=excel_path
+    )
+
+    # 输出摘要
+    print("\n" + "=" * 60)
+    print(f"✅ 分析完成！")
+    print("=" * 60)
+    print(f"\n📊 {statement.company_name} - {statement.report_type}")
+    print(f"📅 报告期: {statement.report_period}")
+    print(f"\n💯 综合评分: {summary.get('综合评分', 'N/A')}/100")
+    print(f"⭐ 综合评级: {analysis['overall_rating']}")
+    print(f"📈 投资评级: {recommendation['rating']}")
+    print(f"💡 操作建议: {recommendation['action']}")
+
+    if args.price and recommendation.get('target_price'):
+        upside = ((recommendation['target_price'] - args.price) / args.price) * 100
+        print(f"\n💰 当前价格: {args.price:.2f} 元")
+        print(f"🎯 目标价格: {recommendation['target_price']:.2f} 元")
+        print(f"📊 上涨空间: {upside:+.2f}%")
+
+    print(f"\n📄 报告文件:")
+    print(f"   - {md_path}")
+    print(f"   - {excel_path}")
+    print("\n" + "=" * 60)
+
+
+if __name__ == '__main__':
+    main()
