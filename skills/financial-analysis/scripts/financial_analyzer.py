@@ -7,6 +7,10 @@ from typing import Dict, List, Optional
 from openai import OpenAI
 import os
 
+# 导入新增模块
+from scripts.dupont_analyzer import DuPontAnalyzer
+from scripts.trend_analyzer import MultiPeriodTrendAnalyzer
+
 
 class FinancialAnalyzer:
     """专业财务分析器"""
@@ -499,3 +503,181 @@ class FinancialAnalyzer:
             return "不推荐"
         else:
             return "强烈不推荐"
+
+    def perform_dupont_analysis(
+        self,
+        balance_sheet: Dict[str, float],
+        income_statement: Dict[str, float],
+        previous_balance_sheet: Dict[str, float] = None,
+        previous_income_statement: Dict[str, float] = None
+    ) -> Dict:
+        """
+        执行杜邦分析
+
+        Args:
+            balance_sheet: 当期资产负债表
+            income_statement: 当期利润表
+            previous_balance_sheet: 上期资产负债表（可选，用于对比分析）
+            previous_income_statement: 上期利润表（可选，用于对比分析）
+
+        Returns:
+            杜邦分析结果，包括分解结果、质量评估和对比分析（如果有上期数据）
+        """
+        dupont = DuPontAnalyzer()
+
+        result = {
+            'decomposition': dupont.calculate_dupont_decomposition(
+                balance_sheet, income_statement
+            ),
+            'quality_evaluation': None,
+            'driver_analysis': None,
+            'chart_data': None
+        }
+
+        result['quality_evaluation'] = dupont.evaluate_roe_quality()
+        result['chart_data'] = dupont.get_dupont_chart_data()
+
+        # 如果有上期数据，进行驱动因素分析
+        if previous_balance_sheet and previous_income_statement:
+            result['driver_analysis'] = dupont.analyze_roe_drivers(
+                balance_sheet, income_statement,
+                previous_balance_sheet, previous_income_statement
+            )
+
+        return result
+
+    def perform_trend_analysis(
+        self,
+        period_data_list: List[Dict]
+    ) -> Dict:
+        """
+        执行多期趋势分析
+
+        Args:
+            period_data_list: 多期财务数据列表，每项包含:
+                - period: 期间标识
+                - balance_sheet: 资产负债表
+                - income_statement: 利润表
+                - cashflow_statement: 现金流量表
+                - indicators: 计算好的财务指标（可选）
+
+        Returns:
+            趋势分析结果，包括趋势摘要、关键指标CAGR、预警列表
+        """
+        trend_analyzer = MultiPeriodTrendAnalyzer()
+
+        # 添加多期数据
+        for period_data in period_data_list:
+            trend_analyzer.add_period_data(
+                period=period_data['period'],
+                balance_sheet=period_data.get('balance_sheet', {}),
+                income_statement=period_data.get('income_statement', {}),
+                cashflow_statement=period_data.get('cashflow_statement', {}),
+                indicators=period_data.get('indicators')
+            )
+
+        # 获取趋势分析摘要
+        trend_summary = trend_analyzer.get_trend_summary()
+
+        # 获取预警摘要
+        alert_summary = trend_analyzer.get_alert_summary()
+
+        # 分析关键指标趋势
+        key_metric_trends = {}
+        key_metrics = [
+            ('income_statement.operating_revenue', '营业收入'),
+            ('income_statement.net_profit', '净利润'),
+            ('profitability.roe', 'ROE'),
+            ('profitability.net_margin', '净利率'),
+            ('solvency.current_ratio', '流动比率'),
+            ('solvency.debt_to_asset', '资产负债率'),
+            ('operational.asset_turnover', '资产周转率'),
+            ('cashflow_quality.operating_cf_to_net_profit', '现金净利比')
+        ]
+
+        for metric_path, metric_name in key_metrics:
+            trend = trend_analyzer.analyze_metric_trend(metric_path)
+            if trend.get('status') != 'metric_not_found' and trend.get('status') != 'insufficient_data':
+                key_metric_trends[metric_name] = {
+                    'direction': trend.get('direction'),
+                    'values': trend.get('values'),
+                    'turning_points': trend.get('turning_points'),
+                    'statistics': trend.get('statistics')
+                }
+
+        # 计算CAGR
+        cagr_results = {}
+        cagr_metrics = [
+            ('income_statement.operating_revenue', '营业收入CAGR'),
+            ('income_statement.net_profit', '净利润CAGR'),
+            ('balance_sheet.total_assets', '总资产CAGR'),
+            ('balance_sheet.shareholders_equity', '股东权益CAGR')
+        ]
+
+        for metric_path, metric_name in cagr_metrics:
+            cagr = trend_analyzer.calculate_cagr(metric_path)
+            if cagr is not None:
+                cagr_results[metric_name] = cagr
+
+        return {
+            'summary': trend_summary,
+            'key_metric_trends': key_metric_trends,
+            'cagr': cagr_results,
+            'alerts': alert_summary,
+            'periods_count': len(period_data_list)
+        }
+
+    def analyze_financial_health_enhanced(
+        self,
+        company_name: str,
+        indicators: Dict[str, Dict],
+        report_type: str,
+        report_period: str,
+        balance_sheet: Dict[str, float] = None,
+        income_statement: Dict[str, float] = None,
+        previous_balance_sheet: Dict[str, float] = None,
+        previous_income_statement: Dict[str, float] = None,
+        period_data_list: List[Dict] = None
+    ) -> Dict:
+        """
+        增强版财务健康分析，集成杜邦分析和趋势分析
+
+        Args:
+            company_name: 公司名称
+            indicators: 财务指标字典
+            report_type: 报告类型
+            report_period: 报告期
+            balance_sheet: 当期资产负债表（用于杜邦分析）
+            income_statement: 当期利润表（用于杜邦分析）
+            previous_balance_sheet: 上期资产负债表
+            previous_income_statement: 上期利润表
+            period_data_list: 多期数据列表（用于趋势分析）
+
+        Returns:
+            综合分析结果
+        """
+        # 基础分析
+        analysis = self.analyze_financial_health(
+            company_name, indicators, report_type, report_period
+        )
+
+        # 杜邦分析
+        if balance_sheet and income_statement:
+            analysis['dupont_analysis'] = self.perform_dupont_analysis(
+                balance_sheet, income_statement,
+                previous_balance_sheet, previous_income_statement
+            )
+
+        # 趋势分析
+        if period_data_list and len(period_data_list) >= 2:
+            analysis['trend_analysis'] = self.perform_trend_analysis(period_data_list)
+
+            # 将趋势预警添加到风险列表
+            trend_alerts = analysis.get('trend_analysis', {}).get('alerts', {})
+            critical_alerts = trend_alerts.get('by_level', {}).get('严重', [])
+            warning_alerts = trend_alerts.get('by_level', {}).get('警告', [])
+
+            for alert in critical_alerts + warning_alerts:
+                analysis['risks'].append(f"[趋势预警] {alert.get('message', '')}")
+
+        return analysis

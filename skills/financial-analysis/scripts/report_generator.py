@@ -3,7 +3,7 @@
 生成专业的投资分析报告（支持Markdown、PDF、Excel等格式）
 """
 
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from datetime import datetime
 import pandas as pd
 
@@ -24,10 +24,24 @@ class AnalysisReportGenerator:
         indicators: Dict,
         analysis: Dict,
         recommendation: Dict,
-        output_path: Optional[str] = None
+        output_path: Optional[str] = None,
+        dupont_analysis: Dict = None,
+        trend_analysis: Dict = None
     ) -> str:
         """
         生成Markdown格式的分析报告
+
+        Args:
+            company_name: 公司名称
+            report_period: 报告期
+            report_type: 报告类型
+            statement_data: 报表数据
+            indicators: 财务指标
+            analysis: 分析结果
+            recommendation: 投资建议
+            output_path: 输出路径
+            dupont_analysis: 杜邦分析结果（可选）
+            trend_analysis: 趋势分析结果（可选）
 
         Returns:
             Markdown格式的报告内容
@@ -174,6 +188,14 @@ class AnalysisReportGenerator:
             report += f"| 自由现金流 | {fcf:,.2f} 万元 | {fcf_eval} |\n"
 
             report += "\n"
+
+        # 添加杜邦分析章节
+        if dupont_analysis:
+            report += self._generate_dupont_section(dupont_analysis)
+
+        # 添加趋势分析章节
+        if trend_analysis:
+            report += self._generate_trend_section(trend_analysis)
 
         report += """
 ---
@@ -365,3 +387,148 @@ class AnalysisReportGenerator:
             summary['现金净利比(%)'] = cf.get('operating_cf_to_net_profit', 0)
 
         return pd.DataFrame([summary])
+
+    def _generate_dupont_section(self, dupont_analysis: Dict) -> str:
+        """生成杜邦分析报告章节"""
+        section = """
+---
+
+## 杜邦分析
+
+"""
+        # 分解结果
+        decomposition = dupont_analysis.get('decomposition', {})
+        if decomposition:
+            roe = decomposition.get('roe', 0)
+            npm = decomposition.get('net_profit_margin', 0)
+            at = decomposition.get('asset_turnover', 0)
+            em = decomposition.get('equity_multiplier', 0)
+
+            section += "### ROE分解\n\n"
+            section += f"**ROE = 净利率 × 资产周转率 × 权益乘数**\n\n"
+            section += f"**{roe:.2f}% = {npm:.2f}% × {at:.4f} × {em:.4f}**\n\n"
+
+            section += "| 因素 | 数值 | 说明 |\n|------|------|------|\n"
+            section += f"| 净利率 | {npm:.2f}% | 反映盈利能力 |\n"
+            section += f"| 资产周转率 | {at:.4f} | 反映运营效率 |\n"
+            section += f"| 权益乘数 | {em:.4f} | 反映财务杠杆 |\n"
+            section += f"| **ROE** | **{roe:.2f}%** | 综合收益率 |\n\n"
+
+        # 质量评估
+        quality = dupont_analysis.get('quality_evaluation', {})
+        if quality:
+            section += "### ROE质量评估\n\n"
+            section += f"- **驱动类型**: {quality.get('driver_type', 'N/A')}\n"
+            section += f"- **质量评级**: {quality.get('quality', 'N/A')}\n"
+            section += f"- **风险等级**: {quality.get('risk_level', 'N/A')}\n"
+            section += f"- **可持续性**: {quality.get('sustainability', 'N/A')}\n\n"
+
+            details = quality.get('details', [])
+            if details:
+                section += "**分析要点:**\n\n"
+                for detail in details:
+                    section += f"- {detail}\n"
+                section += "\n"
+
+        # 驱动因素分析（如果有对比数据）
+        driver_analysis = dupont_analysis.get('driver_analysis', {})
+        if driver_analysis:
+            section += "### ROE变动分析\n\n"
+
+            changes = driver_analysis.get('changes', {})
+            roe_change = changes.get('roe_change', 0)
+            section += f"**ROE变动: {'+' if roe_change >= 0 else ''}{roe_change:.2f}个百分点**\n\n"
+
+            contributions = driver_analysis.get('contributions', {})
+            if contributions:
+                section += "| 驱动因素 | 贡献度 |\n|----------|--------|\n"
+                section += f"| 净利率变动 | {contributions.get('net_profit_margin_contribution', 0):+.2f}% |\n"
+                section += f"| 资产周转率变动 | {contributions.get('asset_turnover_contribution', 0):+.2f}% |\n"
+                section += f"| 权益乘数变动 | {contributions.get('equity_multiplier_contribution', 0):+.2f}% |\n\n"
+
+            main_driver = driver_analysis.get('main_driver', '')
+            if main_driver:
+                section += f"**主要驱动因素**: {main_driver}\n\n"
+
+            interpretations = driver_analysis.get('interpretation', [])
+            if interpretations:
+                section += "**解读:**\n\n"
+                for interp in interpretations:
+                    section += f"- {interp}\n"
+                section += "\n"
+
+        return section
+
+    def _generate_trend_section(self, trend_analysis: Dict) -> str:
+        """生成趋势分析报告章节"""
+        section = """
+---
+
+## 趋势分析
+
+"""
+        summary = trend_analysis.get('summary', {})
+
+        # 分析期间
+        date_range = summary.get('date_range', {})
+        if date_range:
+            section += f"**分析期间**: {date_range.get('start', '')} 至 {date_range.get('end', '')}\n\n"
+
+        # CAGR
+        cagr = trend_analysis.get('cagr', {})
+        if cagr:
+            section += "### 复合增长率 (CAGR)\n\n"
+            section += "| 指标 | CAGR |\n|------|------|\n"
+            for metric_name, value in cagr.items():
+                section += f"| {metric_name} | {value:+.2f}% |\n"
+            section += "\n"
+
+        # 关键指标趋势
+        key_trends = trend_analysis.get('key_metric_trends', {})
+        if key_trends:
+            section += "### 关键指标趋势\n\n"
+            section += "| 指标 | 趋势方向 | 最新值 |\n|------|----------|--------|\n"
+            for metric_name, trend_data in key_trends.items():
+                direction = trend_data.get('direction', 'N/A')
+                values = trend_data.get('values', [])
+                latest = values[-1] if values else 'N/A'
+                if isinstance(latest, (int, float)):
+                    section += f"| {metric_name} | {direction} | {latest:.2f} |\n"
+                else:
+                    section += f"| {metric_name} | {direction} | {latest} |\n"
+            section += "\n"
+
+        # 预警信息
+        alerts = trend_analysis.get('alerts', {})
+        if alerts:
+            total_alerts = alerts.get('total_alerts', 0)
+            if total_alerts > 0:
+                section += "### 趋势预警\n\n"
+
+                by_level = alerts.get('by_level', {})
+
+                # 严重预警
+                critical = by_level.get('严重', [])
+                if critical:
+                    section += "**🔴 严重预警:**\n\n"
+                    for alert in critical:
+                        section += f"- {alert.get('message', '')}\n"
+                    section += "\n"
+
+                # 警告
+                warnings = by_level.get('警告', [])
+                if warnings:
+                    section += "**🟠 警告:**\n\n"
+                    for alert in warnings:
+                        section += f"- {alert.get('message', '')}\n"
+                    section += "\n"
+
+                # 注意
+                cautions = by_level.get('注意', [])
+                if cautions:
+                    section += "**🟡 注意:**\n\n"
+                    for alert in cautions:
+                        section += f"- {alert.get('message', '')}\n"
+                    section += "\n"
+
+        return section

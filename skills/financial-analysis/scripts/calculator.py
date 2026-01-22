@@ -19,10 +19,25 @@ class FinancialIndicatorCalculator:
         balance_sheet: Dict[str, float],
         income_statement: Dict[str, float],
         cashflow_statement: Dict[str, float],
-        metadata: Dict = None
+        metadata: Dict = None,
+        # 新增可选参数 - 用于成长性分析
+        previous_balance_sheet: Dict[str, float] = None,
+        previous_income_statement: Dict[str, float] = None,
+        previous_cashflow_statement: Dict[str, float] = None,
+        enable_dupont: bool = True
     ) -> Dict[str, Dict]:
         """
         计算所有财务指标
+
+        Args:
+            balance_sheet: 资产负债表数据
+            income_statement: 利润表数据
+            cashflow_statement: 现金流量表数据
+            metadata: 元数据（股价、总股本等）
+            previous_balance_sheet: 上期资产负债表（用于成长性分析）
+            previous_income_statement: 上期利润表（用于成长性分析）
+            previous_cashflow_statement: 上期现金流量表（用于成长性分析）
+            enable_dupont: 是否启用杜邦分析
 
         Returns:
             包含各类指标的字典：
@@ -31,7 +46,7 @@ class FinancialIndicatorCalculator:
             - operational: 运营能力指标
             - growth: 成长性指标
             - valuation: 估值指标
-            - cashflow: 现金流指标
+            - cashflow_quality: 现金流质量指标
         """
         results = {
             'profitability': self.calculate_profitability(balance_sheet, income_statement),
@@ -40,6 +55,21 @@ class FinancialIndicatorCalculator:
             'cashflow_quality': self.calculate_cashflow_quality(income_statement, cashflow_statement),
             'valuation': self.calculate_valuation_metrics(balance_sheet, income_statement, metadata),
         }
+
+        # 计算成长性指标（如果提供了上期数据）
+        if previous_income_statement or previous_balance_sheet:
+            # 合并当期和上期数据用于增长率计算
+            current_data = {
+                **balance_sheet,
+                **income_statement,
+                **cashflow_statement
+            }
+            previous_data = {
+                **(previous_balance_sheet or {}),
+                **(previous_income_statement or {}),
+                **(previous_cashflow_statement or {})
+            }
+            results['growth'] = self.calculate_growth_rates(current_data, previous_data)
 
         self.indicators = results
         return results
@@ -266,20 +296,39 @@ class FinancialIndicatorCalculator:
         Returns:
             - eps: 每股收益
             - bvps: 每股净资产
-            - pb_denominator: 市净率分母（每股净资产）
-            - pe_denominator: 市盈率分母（每股收益）
+            - pe_ratio: 市盈率 (需要提供stock_price)
+            - pb_ratio: 市净率 (需要提供stock_price)
+            - ps_ratio: 市销率 (需要提供stock_price)
+            - ev_ebitda: EV/EBITDA (需要提供stock_price和debt信息)
+            - ebitda: 息税折旧摊销前利润
         """
         indicators = {}
+
+        # 计算EBITDA (即使没有metadata也可计算)
+        operating_profit = income_statement.get('operating_profit', 0)
+        depreciation = income_statement.get('depreciation_amortization', 0)
+        financial_expenses = income_statement.get('financial_expenses', 0)
+
+        # EBITDA = 营业利润 + 财务费用 + 折旧摊销
+        # 简化计算：如果没有折旧摊销数据，用营业利润近似
+        ebitda = operating_profit + financial_expenses + depreciation
+        if ebitda > 0:
+            indicators['ebitda'] = ebitda
 
         if not metadata:
             return indicators
 
         total_shares = metadata.get('total_shares', 0)
+        stock_price = metadata.get('stock_price', 0)
+
         if total_shares <= 0:
             return indicators
 
         net_profit = income_statement.get('net_profit', 0)
         equity = balance_sheet.get('shareholders_equity', 0)
+        revenue = income_statement.get('operating_revenue', 0)
+        total_liabilities = balance_sheet.get('total_liabilities', 0)
+        cash = balance_sheet.get('cash_and_equivalents', 0)
 
         # 每股收益 (EPS)
         eps = income_statement.get('basic_eps')
@@ -292,7 +341,35 @@ class FinancialIndicatorCalculator:
         if equity > 0 and total_shares > 0:
             indicators['bvps'] = equity / total_shares
 
-        # 为估值计算提供分母
+        # 每股营业收入
+        if revenue > 0 and total_shares > 0:
+            indicators['sales_per_share'] = revenue / total_shares
+
+        # 如果提供了股价，计算估值比率
+        if stock_price > 0:
+            # 市盈率 PE = 股价 / EPS
+            if 'eps' in indicators and indicators['eps'] > 0:
+                indicators['pe_ratio'] = stock_price / indicators['eps']
+
+            # 市净率 PB = 股价 / BVPS
+            if 'bvps' in indicators and indicators['bvps'] > 0:
+                indicators['pb_ratio'] = stock_price / indicators['bvps']
+
+            # 市销率 PS = 市值 / 营业收入 = 股价 / 每股营业收入
+            if 'sales_per_share' in indicators and indicators['sales_per_share'] > 0:
+                indicators['ps_ratio'] = stock_price / indicators['sales_per_share']
+
+            # EV/EBITDA
+            # EV = 市值 + 总负债 - 现金
+            market_cap = stock_price * total_shares
+            enterprise_value = market_cap + total_liabilities - cash
+            indicators['market_cap'] = market_cap
+            indicators['enterprise_value'] = enterprise_value
+
+            if ebitda > 0:
+                indicators['ev_ebitda'] = enterprise_value / ebitda
+
+        # 为估值计算提供分母（向后兼容）
         if 'eps' in indicators:
             indicators['pe_denominator'] = indicators['eps']
         if 'bvps' in indicators:
@@ -345,23 +422,32 @@ class FinancialIndicatorCalculator:
             '偿债能力评分': self._score_solvency(),
             '运营能力评分': self._score_operational(),
             '现金流质量评分': self._score_cashflow(),
+            '成长性评分': self._score_growth(),
             '综合评分': 0
         }
 
         # 计算综合评分（加权平均）
+        # 新权重分配：盈利30%，偿债20%，运营15%，现金流15%，成长性20%
         weights = {
-            '盈利能力评分': 0.35,
-            '偿债能力评分': 0.25,
-            '运营能力评分': 0.20,
-            '现金流质量评分': 0.20
+            '盈利能力评分': 0.30,
+            '偿债能力评分': 0.20,
+            '运营能力评分': 0.15,
+            '现金流质量评分': 0.15,
+            '成长性评分': 0.20
         }
 
-        total_score = sum(
-            summary[key] * weights[key]
-            for key in weights
-            if summary[key] is not None
-        )
-        summary['综合评分'] = round(total_score, 1)
+        total_weight = 0
+        total_score = 0
+        for key, weight in weights.items():
+            if summary[key] is not None:
+                total_score += summary[key] * weight
+                total_weight += weight
+
+        # 如果某些维度没有数据，按实际权重重新计算
+        if total_weight > 0:
+            summary['综合评分'] = round(total_score / total_weight * 1.0, 1)
+        else:
+            summary['综合评分'] = 0
 
         return summary
 
@@ -570,5 +656,65 @@ class FinancialIndicatorCalculator:
                 score += 15
             elif fcf_ratio >= 0:
                 score += 10
+
+        return round(score, 1)
+
+    def _score_growth(self) -> Optional[float]:
+        """成长性评分 (0-100)"""
+        if 'growth' not in self.indicators:
+            return None
+
+        growth = self.indicators['growth']
+        score = 0
+
+        # 营业收入增长率评分 (35分)
+        revenue_growth = growth.get('operating_revenue_growth', 0)
+        if revenue_growth >= 30:
+            score += 35
+        elif revenue_growth >= 20:
+            score += 30
+        elif revenue_growth >= 10:
+            score += 22
+        elif revenue_growth >= 5:
+            score += 15
+        elif revenue_growth >= 0:
+            score += 8
+        # 负增长不加分
+
+        # 净利润增长率评分 (35分)
+        profit_growth = growth.get('net_profit_growth', 0)
+        if profit_growth >= 30:
+            score += 35
+        elif profit_growth >= 20:
+            score += 30
+        elif profit_growth >= 10:
+            score += 22
+        elif profit_growth >= 5:
+            score += 15
+        elif profit_growth >= 0:
+            score += 8
+        # 负增长不加分
+
+        # 总资产增长率评分 (15分)
+        asset_growth = growth.get('total_assets_growth', 0)
+        if asset_growth >= 20:
+            score += 15
+        elif asset_growth >= 10:
+            score += 12
+        elif asset_growth >= 5:
+            score += 8
+        elif asset_growth >= 0:
+            score += 4
+
+        # 股东权益增长率评分 (15分)
+        equity_growth = growth.get('shareholders_equity_growth', 0)
+        if equity_growth >= 20:
+            score += 15
+        elif equity_growth >= 10:
+            score += 12
+        elif equity_growth >= 5:
+            score += 8
+        elif equity_growth >= 0:
+            score += 4
 
         return round(score, 1)

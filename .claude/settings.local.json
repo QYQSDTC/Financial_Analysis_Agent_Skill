@@ -3,7 +3,8 @@
     "allow": [
       "Bash(tree:*)",
       "Skill(financial-analysis)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Skill(skill-creator)"
     ]
   }
 }
