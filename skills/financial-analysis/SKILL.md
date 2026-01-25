@@ -19,7 +19,7 @@ description: 专业的上市公司财务报表分析技能。用于分析PDF格�
 
 当用户提供财报PDF时，按以下流程执行：
 
-1. **读取PDF** - 使用 Read 工具读取PDF文件内容
+1. **读取PDF** - 使用 PDF 工具读取PDF文件内容
 2. **提取数据** - 从文本中识别资产负债表、利润表、现金流量表数据
 3. **计算指标** - 使用 `scripts/calculator.py` 计算财务指标
 4. **杜邦分析** - 使用 `scripts/dupont_analyzer.py` 分解ROE驱动因素
