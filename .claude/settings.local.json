@@ -4,7 +4,8 @@
       "Bash(tree:*)",
       "Skill(financial-analysis)",
       "Bash(python3:*)",
-      "Skill(skill-creator)"
+      "Skill(skill-creator)",
+      "Bash(chmod:*)"
     ]
   }
 }
